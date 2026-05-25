@@ -1,5 +1,7 @@
 'use client'
 
+import client from '@/app/api/client'
+
 const PRICE_RANGES = [
   'Rp 5.000 – Rp 15.000',
   'Rp 15.000 – Rp 30.000',
@@ -13,7 +15,6 @@ export function isGoogleMapsUrl(url) {
     const { hostname } = new URL(url)
     return (
       hostname === 'maps.google.com' ||
-      hostname === 'https://google.com/maps' ||
       hostname === 'www.google.com' ||
       hostname === 'maps.app.goo.gl' ||
       hostname === 'goo.gl'
@@ -71,15 +72,20 @@ export default function Form({
   const handleImageUpload = async (e, index) => {
     const file = e.target.files[0]
     if (!file) return
-    const fd = new FormData()
-    fd.append('file', file)
-    try {
-      const res = await fetch('/api/upload', { method: 'POST', body: fd })
-      const data = await res.json()
-      const newImgs = [...formData.images]
-      newImgs[index] = data.url
-      setFormData({ ...formData, images: newImgs })
-    } catch (err) { console.error('Upload failed', err) }
+
+    const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_')
+    const fileName = `${Date.now()}-${safeName}`
+
+    const { error } = await client.storage
+      .from('umkm-images')
+      .upload(fileName, file, { contentType: file.type, upsert: false })
+
+    if (error) { console.error('Upload failed', error); return }
+
+    const { data } = client.storage.from('umkm-images').getPublicUrl(fileName)
+    const newImgs = [...formData.images]
+    newImgs[index] = data.publicUrl
+    setFormData({ ...formData, images: newImgs })
   }
 
   const clearError = (field) => {
@@ -107,7 +113,7 @@ export default function Form({
         <input
           required
           type="url"
-          placeholder="Link Google Maps"
+          placeholder="Link Google Maps (maps.app.goo.gl/...)"
           value={formData.mapsUrl}
           onChange={e => { setFormData({ ...formData, mapsUrl: e.target.value }); clearError('mapsUrl') }}
           style={fieldErrors.mapsUrl ? { borderColor: '#ff3b30' } : {}}
@@ -136,7 +142,7 @@ export default function Form({
       <div>
         <input
           required
-          placeholder="No. WhatsApp"
+          placeholder="No. WhatsApp (cth: 08123456789)"
           value={formData.whatsapp}
           maxLength={13}
           onChange={e => {
